@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Line Fill Puzzle Game</title>
+  <style>
+    body {
+      background: #121212;
+      color: #eee;
+      font-family: sans-serif;
+      margin: 0; padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+    }
+    h1 {
+      margin: 20px;
+    }
+    canvas {
+      background: #1f1f1f;
+      border-radius: 12px;
+      box-shadow: 0 0 20px #0ff;
+      touch-action: none;
+    }
+    #controls {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      padding: 6px 12px;
+      font-size: 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background-color: #333;
+      color: white;
+    }
+    button:hover {
+      background-color: #444;
+    }
+    #message {
+      margin-top: 10px;
+      font-weight: bold;
+      height: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Line Fill Puzzle</h1>
+  <canvas id="canvas" width="400" height="400"></canvas>
+  <div id="controls">
+    <button onclick="resetGame()">Reset</button>
+    <button onclick="nextLevel()">Next Level</button>
+  </div>
+  <div id="message"></div>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const message = document.getElementById("message");
+    const TRACE_RADIUS = 20;
+
+    const LEVELS = [
+
+    [
+    { x: 100, y: 100 },   // পেছনের পায়ের নিচ
+    { x: 100, y: 250 },   // পেছনের পায়ের উপর দিক
+    { x: 100, y: 300 },   // চেয়ারের পেছনের হেড
+    { x: 150, y: 300 },   // হেডার উপর অংশ
+    { x: 150, y: 250 },   // নিচে নামা
+    { x: 150, y: 200 },   // বসার জোন শুরু
+    { x: 200, y: 200 },   // বসার জোনে ডান দিকে
+    { x: 200, y: 250 },   // সামনের পা নিচে
+    { x: 200, y: 100 },   // সামনের পায়ের নিচ
+    { x: 150, y: 100 },   // বাম নিচে যাওয়া
+    { x: 150, y: 150 },   // চেয়ারের সংযোগ
+    { x: 100, y: 150 },   // আবার পেছনে
+    { x: 100, y: 100 }    // প্রথম পয়েন্টে ফিরে আসা
+  ],
+
+    [
+    { x: 200, y: 300 },
+    { x: 150, y: 250 },
+    { x: 100, y: 200 },
+    { x: 150, y: 200 },
+    { x: 180, y: 170 },
+    { x: 220, y: 170 },
+    { x: 250, y: 200 },
+    { x: 300, y: 200 },
+    { x: 250, y: 250 },
+    { x: 200, y: 300 },
+    { x: 170, y: 320 },
+    { x: 230, y: 320 },
+    { x: 200, y: 300 }
+  ],
+
+    [
+    { x: 100, y: 100 },
+    { x: 300, y: 100 },
+    { x: 300, y: 200 },
+    { x: 200, y: 200 },
+    { x: 200, y: 300 },
+    { x: 400, y: 300 },
+    { x: 400, y: 100 },
+    { x: 500, y: 100 },
+    { x: 500, y: 400 },
+    { x: 100, y: 400 },
+    { x: 100, y: 300 },
+    { x: 150, y: 300 },
+    { x: 150, y: 250 },
+    { x: 100, y: 250 },
+    { x: 100, y: 200 },
+    { x: 150, y: 200 },
+    { x: 150, y: 150 },
+    { x: 100, y: 150 },
+    { x: 100, y: 100 }
+  ],
+
+    [
+  { x: 100, y: 100 },   // ↘️ ডান নিচ
+  { x: 300, y: 300 },   // ↖️ বাম উপর
+  { x: 200, y: 200 },   // কেন্দ্র
+  { x: 300, y: 100 },   // ↙️ বাম নিচ
+  { x: 100, y: 300 }    // ↗️ ডান উপর
+],
+      [ // Level 1: Wave
+        { x: 50, y: 200 },
+        { x: 100, y: 150 },
+        { x: 150, y: 250 },
+        { x: 200, y: 150 },
+        { x: 250, y: 250 },
+        { x: 300, y: 150 },
+        { x: 350, y: 200 }
+      ],
+      [ // Level 2: Zigzag
+        { x: 50, y: 100 },
+        { x: 100, y: 200 },
+        { x: 150, y: 100 },
+        { x: 200, y: 200 },
+        { x: 250, y: 100 },
+        { x: 300, y: 200 },
+        { x: 350, y: 100 }
+      ]
+    ];
+
+    let levelIndex = 0;
+    let pathPoints = [...LEVELS[levelIndex]];
+    let SEGMENTS = [];
+    let isDrawing = false;
+
+    function initSegments() {
+      SEGMENTS = [];
+      for (let i = 0; i < pathPoints.length - 1; i++) {
+        SEGMENTS.push({
+          from: pathPoints[i],
+          to: pathPoints[i + 1],
+          traced: false,
+          animProgress: 0
+        });
+      }
+    }
+
+    function distanceToSegment(p, a, b) {
+      const A = p.x - a.x;
+      const B = p.y - a.y;
+      const C = b.x - a.x;
+      const D = b.y - a.y;
+      const dot = A * C + B * D;
+      const len_sq = C * C + D * D;
+      let param = -1;
+      if (len_sq !== 0) param = dot / len_sq;
+      let xx, yy;
+      if (param < 0) { xx = a.x; yy = a.y; }
+      else if (param > 1) { xx = b.x; yy = b.y; }
+      else { xx = a.x + param * C; yy = a.y + param * D; }
+      const dx = p.x - xx;
+      const dy = p.y - yy;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function handleTrace(pos) {
+      SEGMENTS.forEach(seg => {
+        if (!seg.traced && distanceToSegment(pos, seg.from, seg.to) <= TRACE_RADIUS) {
+          seg.traced = true;
+          seg.animProgress = 0;
+          vibrate();
+        }
+      });
+    }
+
+    function allTraced() {
+      return SEGMENTS.every(seg => seg.traced);
+    }
+
+    function vibrate() {
+      if (navigator.vibrate) navigator.vibrate(50);
+    }
+
+    function drawPath() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.lineCap = "round";
+
+      // Full path (gray background)
+      ctx.beginPath();
+      ctx.lineWidth = 8;
+      ctx.strokeStyle = "#444";
+      ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+      for (let i = 1; i < pathPoints.length; i++) {
+        ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
+      }
+      ctx.stroke();
+
+      // Traced animation
+      SEGMENTS.forEach(seg => {
+        if (seg.traced && seg.animProgress < 1) {
+          seg.animProgress += 0.05;
+          if (seg.animProgress > 1) seg.animProgress = 1;
+        }
+        if (seg.animProgress > 0) {
+          const { from, to, animProgress } = seg;
+          const x = from.x + (to.x - from.x) * animProgress;
+          const y = from.y + (to.y - from.y) * animProgress;
+          ctx.beginPath();
+          ctx.strokeStyle = "#0ff";
+          ctx.lineWidth = 8;
+          ctx.shadowColor = "#0ff";
+          ctx.shadowBlur = 10;
+          ctx.moveTo(from.x, from.y);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+        }
+      });
+
+      if (allTraced()) {
+        message.textContent = "🎉 Puzzle Solved!";
+        message.style.color = "#0f0";
+      }
+      requestAnimationFrame(drawPath);
+    }
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const source = e.touches ? e.touches[0] : e;
+      return {
+        x: source.clientX - rect.left,
+        y: source.clientY - rect.top
+      };
+    }
+
+    function resetGame() {
+      message.textContent = "";
+      pathPoints = [...LEVELS[levelIndex]];
+      initSegments();
+    }
+
+    function nextLevel() {
+      levelIndex = (levelIndex + 1) % LEVELS.length;
+      resetGame();
+    }
+
+    canvas.addEventListener("mousedown", e => {
+      isDrawing = true;
+      handleTrace(getPos(e));
+    });
+    canvas.addEventListener("mousemove", e => {
+      if (isDrawing) handleTrace(getPos(e));
+    });
+    canvas.addEventListener("mouseup", () => isDrawing = false);
+    canvas.addEventListener("mouseleave", () => isDrawing = false);
+
+    canvas.addEventListener("touchstart", e => {
+      e.preventDefault();
+      isDrawing = true;
+      handleTrace(getPos(e));
+    });
+    canvas.addEventListener("touchmove", e => {
+      e.preventDefault();
+      if (isDrawing) handleTrace(getPos(e));
+    });
+    canvas.addEventListener("touchend", () => isDrawing = false);
+    canvas.addEventListener("touchcancel", () => isDrawing = false);
+
+    resetGame();
+    drawPath();
+  </script>
+</body>
+</html>
